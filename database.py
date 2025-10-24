@@ -45,7 +45,12 @@ async def get_lot_bids(lot_id: int) -> List[Dict]:
             "SELECT * FROM bids WHERE lot_id = $1 ORDER BY created_at ASC",
             lot_id
         )
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            bid = dict(row)
+            bid['amount'] = float(bid['amount'])
+            result.append(bid)
+        return result
 
 async def get_current_max_bid(lot_id: int) -> Optional[Dict]:
     async with pool.acquire() as conn:
@@ -53,12 +58,21 @@ async def get_current_max_bid(lot_id: int) -> Optional[Dict]:
             "SELECT * FROM bids WHERE lot_id = $1 ORDER BY amount DESC LIMIT 1",
             lot_id
         )
-        return dict(row) if row else None
+        if row:
+            result = dict(row)
+            result['amount'] = float(result['amount'])
+            return result
+        return None
 
 async def get_all_bids() -> List[Dict]:
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM bids ORDER BY created_at ASC")
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            bid = dict(row)
+            bid['amount'] = float(bid['amount'])
+            result.append(bid)
+        return result
 
 async def get_user_bids(user_id: int) -> List[Dict]:
     async with pool.acquire() as conn:
@@ -66,7 +80,12 @@ async def get_user_bids(user_id: int) -> List[Dict]:
             "SELECT * FROM bids WHERE user_id = $1 ORDER BY created_at DESC",
             user_id
         )
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            bid = dict(row)
+            bid['amount'] = float(bid['amount'])
+            result.append(bid)
+        return result
 
 async def close_pool():
     global pool

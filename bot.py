@@ -557,7 +557,7 @@ async def main() -> None:
     except (KeyboardInterrupt, SystemExit):
         logger.info("Shutdown signal received, stopping gracefully...")
     finally:
-        if app.updater and app.updater.is_running:
+        if app.updater and app.updater.running:
             await app.updater.stop()
         if app.running:
             await app.stop()
