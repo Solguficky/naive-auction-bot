@@ -562,6 +562,7 @@ async def main() -> None:
         if app.running:
             await app.stop()
         await app.shutdown()
+        await database.close_pool()
         logger.info("Bot stopped gracefully")
 
 

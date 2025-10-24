@@ -15,17 +15,53 @@
 
 - Python 3.11
 - python-telegram-bot 20.7
-- SQLite (через aiosqlite)
+- PostgreSQL (через asyncpg)
 - Docker
 
 ## Локальный запуск
 
-### Требования
+### Вариант 1: С Docker Compose (рекомендуется)
 
+1. Создайте `.env` файл на основе `.env.example`:
+```bash
+cp .env.example .env
+```
+
+2. Отредактируйте `.env` и укажите ваши данные:
+```
+TG_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+CREATOR_ID=YOUR_TELEGRAM_USER_ID
+```
+
+3. Запустите проект:
+```bash
+docker-compose up -d
+```
+
+4. Просмотр логов:
+```bash
+docker-compose logs -f bot
+```
+
+5. Остановка:
+```bash
+docker-compose down
+```
+
+**Преимущества Docker Compose:**
+- ✅ Не нужно устанавливать PostgreSQL локально
+- ✅ Полная изоляция окружения
+- ✅ Автоматическая настройка связи между сервисами
+- ✅ Персистентность данных через Docker volumes
+
+### Вариант 2: Без Docker
+
+**Требования:**
 - Python 3.11+
+- PostgreSQL 12+
 - Telegram Bot Token (получить у [@BotFather](https://t.me/BotFather))
 
-### Установка
+**Установка:**
 
 1. Установите зависимости:
 ```bash
@@ -37,18 +73,24 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-3. Отредактируйте `.env` и укажите ваш токен бота:
+3. Отредактируйте `.env` и укажите ваши данные:
 ```
 TG_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 CREATOR_ID=YOUR_TELEGRAM_USER_ID
+DATABASE_URL=postgresql://user:password@localhost:5432/auction_db
 ```
 
-4. Запустите бота:
+4. Создайте базу данных PostgreSQL:
+```bash
+createdb auction_db
+```
+
+5. Запустите бота:
 ```bash
 python bot.py
 ```
 
-База данных `auction.db` будет создана автоматически при первом запуске.
+Таблицы в базе данных будут созданы автоматически при первом запуске.
 
 ## Деплой на Railway
 
@@ -64,20 +106,18 @@ python bot.py
 3. Выберите ваш репозиторий
 4. Railway автоматически обнаружит Dockerfile
 
-### Шаг 3: Настройка переменных окружения
+### Шаг 3: Добавление PostgreSQL
 
-1. Перейдите в раздел "Variables" вашего проекта
+1. В вашем проекте нажмите "New" → "Database" → "Add PostgreSQL"
+2. Railway автоматически создаст базу данных и установит переменную окружения `DATABASE_URL`
+
+### Шаг 4: Настройка переменных окружения
+
+1. Перейдите в раздел "Variables" вашего сервиса с ботом
 2. Добавьте следующие переменные:
    - `TG_BOT_TOKEN` - ваш токен бота от BotFather
    - `CREATOR_ID` - ваш Telegram User ID (опционально, по умолчанию 1337)
-
-### Шаг 4: Настройка персистентности (опционально)
-
-Для сохранения данных между перезапусками:
-1. Перейдите в "Settings" → "Volumes"
-2. Нажмите "Add Volume"
-3. Mount Path: `/app`
-4. Это сохранит файл `auction.db` между деплоями
+3. `DATABASE_URL` будет добавлена автоматически после создания PostgreSQL
 
 ### Шаг 5: Деплой
 
@@ -87,9 +127,15 @@ python bot.py
 
 ### Переменные окружения Railway
 
-Railway автоматически предоставляет некоторые переменные, но для polling-бота они не требуются:
+**Обязательные:**
+- `TG_BOT_TOKEN` - токен бота от BotFather
+- `DATABASE_URL` - URL подключения к PostgreSQL (устанавливается автоматически)
+
+**Опциональные:**
+- `CREATOR_ID` - ваш Telegram User ID для админ-функций (по умолчанию 1337)
+
+**Системные (не требуются):**
 - `PORT` - не используется (бот работает через polling, а не webhook)
-- `RAILWAY_VOLUME_MOUNT_PATH` - можно использовать для кастомного пути к БД
 
 ## Команды бота
 
@@ -106,15 +152,15 @@ Railway автоматически предоставляет некоторые
 
 ## Структура данных
 
-### База данных SQLite
+### База данных PostgreSQL
 
 Таблица `bids`:
 | Поле | Тип | Описание |
 |------|-----|----------|
-| id | INTEGER | Автоинкремент, первичный ключ |
+| id | SERIAL | Автоинкремент, первичный ключ |
 | lot_id | INTEGER | ID лота |
-| user_id | INTEGER | Telegram User ID |
-| amount | REAL | Сумма ставки |
+| user_id | BIGINT | Telegram User ID |
+| amount | DECIMAL(10, 2) | Сумма ставки |
 | created_at | TIMESTAMP | Время создания |
 
 ### Лоты
@@ -133,9 +179,10 @@ Railway автоматически предоставляет некоторые
 ```
 naive-auction-bot/
 ├── bot.py              # Основная логика бота
-├── database.py         # Слой работы с SQLite
+├── database.py         # Слой работы с PostgreSQL
 ├── requirements.txt    # Python зависимости
 ├── Dockerfile          # Конфигурация Docker
+├── docker-compose.yml  # Оркестрация Docker контейнеров
 ├── .dockerignore       # Игнорируемые файлы
 ├── .env.example        # Шаблон конфигурации
 ├── railway.toml        # Конфигурация Railway
@@ -154,15 +201,40 @@ naive-auction-bot/
 
 ## Troubleshooting
 
-### Бот не запускается
-- Проверьте логи: убедитесь, что `TG_BOT_TOKEN` установлен
+### Docker Compose
+
+**Бот не запускается:**
+```bash
+docker-compose logs bot
+```
+- Проверьте, что `.env` файл содержит `TG_BOT_TOKEN`
+- Убедитесь, что PostgreSQL контейнер запущен: `docker-compose ps`
+
+**PostgreSQL не отвечает:**
+```bash
+docker-compose restart postgres
+docker-compose logs postgres
+```
+
+**Очистка и пересоздание:**
+```bash
+docker-compose down -v
+docker-compose up -d --build
+```
+
+### Общие проблемы
+
+**Бот не запускается:**
+- Проверьте логи: убедитесь, что `TG_BOT_TOKEN` и `DATABASE_URL` установлены
 - Проверьте валидность токена через BotFather
+- Убедитесь, что PostgreSQL база данных создана и доступна
 
-### База данных не сохраняется между деплоями
-- Убедитесь, что настроен Volume в Railway
-- Проверьте права доступа к директории `/app`
+**Ошибка подключения к базе данных:**
+- Проверьте правильность `DATABASE_URL`
+- Убедитесь, что PostgreSQL сервис запущен
+- Проверьте сетевую доступность между сервисами
 
-### Уведомления не приходят
+**Уведомления не приходят:**
 - Пользователь должен хотя бы раз написать боту
 - Проверьте логи на ошибки отправки сообщений
 

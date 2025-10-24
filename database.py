@@ -1,72 +1,75 @@
-import aiosqlite
+import asyncpg
 import logging
-from datetime import datetime
-from typing import Optional, List, Dict
 import os
+from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.getenv("DB_PATH", "/app/data/auction.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+pool = None
 
 async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
+    global pool
+    
+    if not DATABASE_URL:
+        logger.error("DATABASE_URL environment variable is required")
+        raise ValueError("DATABASE_URL environment variable is required")
+    
+    pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+    
+    async with pool.acquire() as conn:
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS bids (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 lot_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                amount REAL NOT NULL,
+                user_id BIGINT NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        await db.commit()
-        logger.info("Database initialized successfully")
+    logger.info("Database initialized successfully")
 
 async def save_bid(lot_id: int, user_id: int, amount: float) -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "INSERT INTO bids (lot_id, user_id, amount) VALUES (?, ?, ?)",
-            (lot_id, user_id, amount)
+    async with pool.acquire() as conn:
+        bid_id = await conn.fetchval(
+            "INSERT INTO bids (lot_id, user_id, amount) VALUES ($1, $2, $3) RETURNING id",
+            lot_id, user_id, amount
         )
-        await db.commit()
-        bid_id = cursor.lastrowid
         logger.info(f"Saved bid {bid_id}: lot={lot_id}, user={user_id}, amount={amount}")
         return bid_id
 
 async def get_lot_bids(lot_id: int) -> List[Dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM bids WHERE lot_id = ? ORDER BY created_at ASC",
-            (lot_id,)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM bids WHERE lot_id = $1 ORDER BY created_at ASC",
+            lot_id
         )
-        rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
 async def get_current_max_bid(lot_id: int) -> Optional[Dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM bids WHERE lot_id = ? ORDER BY amount DESC LIMIT 1",
-            (lot_id,)
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM bids WHERE lot_id = $1 ORDER BY amount DESC LIMIT 1",
+            lot_id
         )
-        row = await cursor.fetchone()
         return dict(row) if row else None
 
 async def get_all_bids() -> List[Dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM bids ORDER BY created_at ASC")
-        rows = await cursor.fetchall()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM bids ORDER BY created_at ASC")
         return [dict(row) for row in rows]
 
 async def get_user_bids(user_id: int) -> List[Dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM bids WHERE user_id = ? ORDER BY created_at DESC",
-            (user_id,)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM bids WHERE user_id = $1 ORDER BY created_at DESC",
+            user_id
         )
-        rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
+async def close_pool():
+    global pool
+    if pool:
+        await pool.close()
+        logger.info("Database connection pool closed")
