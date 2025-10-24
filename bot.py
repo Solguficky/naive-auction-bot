@@ -156,7 +156,9 @@ welcome_message = "Привет. Напиши что угодно в чат дл
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [KeyboardButton("Показать лоты")],
-        [KeyboardButton("Показать свои ставки")]
+        [KeyboardButton("Показать свои ставки")],
+        [KeyboardButton("📋 Информация об аукционе")],
+        [KeyboardButton("ℹ️ О боте")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     context.user_data['first_message'] = True
@@ -164,7 +166,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_back_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.callback_query.answer()
-    await update.callback_query.message.reply_text(welcome_message)
+    keyboard = [
+        [KeyboardButton("Показать лоты")],
+        [KeyboardButton("Показать свои ставки")],
+        [KeyboardButton("📋 Информация об аукционе")],
+        [KeyboardButton("ℹ️ О боте")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.callback_query.message.reply_text(welcome_message, reply_markup=reply_markup)
 
 async def handle_unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
@@ -238,11 +247,15 @@ async def delete_bid(update: Update, context: CallbackContext) -> None:
         context.user_data['awaiting_bid_id'] = True
 
 
-async def notify_outbid_users(lot_id: int, previous_max_bid: Optional[Dict], new_max_bid_amount: float, context: ContextTypes.DEFAULT_TYPE):
+async def notify_outbid_users(lot_id: int, previous_max_bid: Optional[Dict], new_max_bid_amount: float, new_bidder_id: int, context: ContextTypes.DEFAULT_TYPE):
     lot = auction_lots[lot_id]
 
     if previous_max_bid and previous_max_bid['user_id']:
         user_id = previous_max_bid['user_id']
+        
+        if user_id == new_bidder_id:
+            return
+        
         try:
             await context.bot.send_message(
                 chat_id=user_id,
@@ -329,7 +342,7 @@ async def bid_increase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     bid_id = await database.save_bid(lot_id, query.from_user.id, new_bid)
 
-    await notify_outbid_users(lot_id, previous_max_bid, new_bid, context)
+    await notify_outbid_users(lot_id, previous_max_bid, new_bid, query.from_user.id, context)
 
     await query.edit_message_text(
         text=f"✅ Ставка в {new_bid} рублей была поднята для '{lot['title']}'. Ваш ID ставки: {bid_id}. Спасибо!\n\n"
@@ -414,7 +427,7 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
         bid_id = await database.save_bid(lot_id, user.id, bid_amount)
 
         if current_bid is None or bid_amount > current_bid:
-            await notify_outbid_users(lot_id, previous_max_bid, bid_amount, context)
+            await notify_outbid_users(lot_id, previous_max_bid, bid_amount, user.id, context)
 
         await update.message.reply_text(
             f"✅ Ставка в {bid_amount} рублей была сделана для '{lot['title']}'. Ваш ID ставки: {bid_id}. Спасибо!\n\n"
@@ -530,6 +543,8 @@ async def main() -> None:
 
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать лоты$'), handle_show_lots_button))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать свои ставки$'), show_user_bids))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^📋 Информация об аукционе$'), auction_info))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^ℹ️ О боте$'), info))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text_message))
 
