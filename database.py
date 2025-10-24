@@ -2,10 +2,11 @@ import aiosqlite
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict
+import os
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = "auction.db"
+DB_PATH = os.getenv("DB_PATH", "/app/data/auction.db")
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:

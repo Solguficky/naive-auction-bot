@@ -237,20 +237,6 @@ async def delete_bid(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text("Пожалуйста, укажите ID ставки для удаления.")
         context.user_data['awaiting_bid_id'] = True
 
-async def process_delete_bid_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if 'awaiting_bid_id' in context.user_data and context.user_data['awaiting_bid_id']:
-        user = update.effective_user
-        bid_id_str = update.message.text.strip()
-
-        try:
-            bid_id = int(bid_id_str)
-            await update.message.reply_text(f"Функция удаления ставок в данной версии не реализована. ID: {bid_id}")
-        except ValueError:
-            await update.message.reply_text("Пожалуйста, введите корректное число для ID ставки.")
-
-        context.user_data['awaiting_bid_id'] = False
-    else:
-        await handle_unknown_message(update, context)
 
 async def notify_outbid_users(lot_id: int, previous_max_bid: Optional[Dict], new_max_bid_amount: float, context: ContextTypes.DEFAULT_TYPE):
     lot = auction_lots[lot_id]
@@ -389,7 +375,17 @@ async def set_individual_bid(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=reply_markup
     )
 
-async def process_bid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if 'awaiting_bid_id' in context.user_data and context.user_data['awaiting_bid_id']:
+        bid_id_str = update.message.text.strip()
+        try:
+            bid_id = int(bid_id_str)
+            await update.message.reply_text(f"Функция удаления ставок в данной версии не реализована. ID: {bid_id}")
+        except ValueError:
+            await update.message.reply_text("Пожалуйста, введите корректное число для ID ставки.")
+        context.user_data['awaiting_bid_id'] = False
+        return
+
     user = update.effective_user
     message = update.message.text
     lot_id = context.user_data.get("current_lot")
@@ -535,8 +531,7 @@ async def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать лоты$'), handle_show_lots_button))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать свои ставки$'), show_user_bids))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_bid))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_delete_bid_id))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_text_message))
 
     app.add_handler(CallbackQueryHandler(lot_detail, pattern="^view_"))
     app.add_handler(CallbackQueryHandler(go_to_lots, pattern="^go_to_lots$"))

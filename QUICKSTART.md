@@ -3,7 +3,6 @@
 ## Локально
 
 ```bash
-cd services/naive-auction-bot
 pip install -r requirements.txt
 cp .env.example .env
 # Отредактируйте .env и добавьте TG_BOT_TOKEN
@@ -14,12 +13,11 @@ python bot.py
 
 1. Создайте новый проект на [Railway.app](https://railway.app)
 2. Подключите GitHub репозиторий
-3. Настройте Root Directory: `services/naive-auction-bot`
-4. Добавьте переменные окружения:
+3. Добавьте переменные окружения:
    - `TG_BOT_TOKEN` = ваш токен от @BotFather
    - `CREATOR_ID` = ваш Telegram User ID (опционально)
-5. (Опционально) Добавьте Volume с Mount Path `/app` для персистентности БД
-6. Deploy!
+4. (Опционально) Добавьте Volume с Mount Path `/app` для персистентности БД
+5. Deploy!
 
 ## Получение Telegram Bot Token
 
