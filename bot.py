@@ -323,6 +323,9 @@ async def lot_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         buttons.append([InlineKeyboardButton("Посмотреть описание", callback_data=f'description_{lot_id}')])
         buttons.append([InlineKeyboardButton(f"Повысить на {min_bid_step} рублей (новая ставка: {new_bid} рублей)", callback_data=f'bid_increase_{lot_id}')])
         buttons.append([InlineKeyboardButton(f"Индивидуальная ставка (>{min_bid_step})", callback_data=f'set_bid_{lot_id}')])
+    
+    # Кнопка возврата к списку лотов
+    buttons.append([InlineKeyboardButton("◀️ Назад к лотам", callback_data='go_to_lots')])
 
     reply_markup = InlineKeyboardMarkup(buttons)
 
@@ -335,7 +338,16 @@ async def lot_detail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def go_to_lots(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.callback_query.answer()
-    await show_lots(update, context)
+    
+    # Создаем кнопки с лотами
+    lot_buttons = []
+    for lot_id, lot_info in auction_lots.items():
+        lot_buttons.append([InlineKeyboardButton(f'Лот {lot_id}: {lot_info["title"]}', callback_data=f'view_{lot_id}')])
+    
+    reply_markup = InlineKeyboardMarkup(lot_buttons)
+    
+    # Отправляем новое сообщение со списком лотов
+    await update.callback_query.message.reply_text('Доступные лоты:', reply_markup=reply_markup)
 
 async def start_bid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -657,6 +669,9 @@ async def show_description(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             InlineKeyboardButton(f"Повысить на {min_bid_step} рублей (новая ставка: {new_bid} рублей)", callback_data=f'bid_increase_{lot_id}')
         ])
         buttons.append([InlineKeyboardButton(f"Индивидуальная ставка (>{min_bid_step})", callback_data=f'set_bid_{lot_id}')])
+    
+    # Кнопка возврата к списку лотов
+    buttons.append([InlineKeyboardButton("◀️ Назад к лотам", callback_data='go_to_lots')])
 
     reply_markup = InlineKeyboardMarkup(buttons)
 
