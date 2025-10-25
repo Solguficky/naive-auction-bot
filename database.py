@@ -87,6 +87,33 @@ async def get_user_bids(user_id: int) -> List[Dict]:
             result.append(bid)
         return result
 
+async def get_bid_by_id(bid_id: int) -> Optional[Dict]:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM bids WHERE id = $1",
+            bid_id
+        )
+        if row:
+            result = dict(row)
+            result['amount'] = float(result['amount'])
+            return result
+        return None
+
+async def delete_bid(bid_id: int) -> bool:
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM bids WHERE id = $1",
+            bid_id
+        )
+        # result будет строка вида "DELETE 1" если удалено, "DELETE 0" если не найдено
+        deleted_count = int(result.split()[-1])
+        if deleted_count > 0:
+            logger.info(f"Deleted bid {bid_id}")
+            return True
+        else:
+            logger.warning(f"Bid {bid_id} not found for deletion")
+            return False
+
 async def close_pool():
     global pool
     if pool:

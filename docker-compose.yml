@@ -22,7 +22,7 @@ services:
     container_name: auction_bot
     environment:
       TG_BOT_TOKEN: ${TG_BOT_TOKEN}
-      CREATOR_ID: ${CREATOR_ID:-1337}
+      CREATOR_ID: ${CREATOR_ID}
       DATABASE_URL: postgresql://auction_user:auction_password@postgres:5432/auction_db
     depends_on:
       postgres:

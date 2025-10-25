@@ -221,16 +221,54 @@ async def show_user_bids(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         await update.message.reply_text("У вас пока нет ставок.")
 
-async def delete_bid(update: Update, context: CallbackContext) -> None:
+async def delete_bid_command(update: Update, context: CallbackContext) -> None:
     user = update.effective_user
     if user.id != CREATOR_ID:
         logger.warning(f'Попытка несанкционированного удаления ставки пользователем ID {user.id}.')
         await update.message.reply_text('У вас нет прав на удаление ставок. Рапорт уже составлен')
         return
 
-    if len(context.args) != 1:
-        await update.message.reply_text("Пожалуйста, укажите ID ставки для удаления.")
+    # Если ID ставки передан сразу в команде
+    if len(context.args) == 1:
+        try:
+            bid_id = int(context.args[0])
+            await perform_bid_deletion(update, bid_id)
+        except ValueError:
+            await update.message.reply_text("Пожалуйста, укажите корректный числовой ID ставки.")
+    else:
+        # Если ID не передан, просим ввести
+        await update.message.reply_text("Пожалуйста, укажите ID ставки для удаления.\nФормат: /delete [ID] или введите ID в следующем сообщении.")
         context.user_data['awaiting_bid_id'] = True
+
+async def perform_bid_deletion(update: Update, bid_id: int) -> None:
+    """Выполняет удаление ставки и отправляет результат"""
+    # Сначала получаем информацию о ставке
+    bid = await database.get_bid_by_id(bid_id)
+    
+    if not bid:
+        await update.message.reply_text(f"❌ Ставка с ID {bid_id} не найдена.")
+        return
+    
+    # Показываем информацию о ставке перед удалением
+    lot_title = auction_lots.get(bid['lot_id'], {}).get('title', 'Неизвестный лот')
+    
+    await update.message.reply_text(
+        f"Информация о ставке:\n"
+        f"ID: {bid['id']}\n"
+        f"Лот: {lot_title} (ID: {bid['lot_id']})\n"
+        f"Пользователь ID: {bid['user_id']}\n"
+        f"Сумма: {bid['amount']} руб.\n"
+        f"Дата: {bid['created_at']}"
+    )
+    
+    # Удаляем ставку
+    success = await database.delete_bid(bid_id)
+    
+    if success:
+        await update.message.reply_text(f"✅ Ставка с ID {bid_id} успешно удалена.")
+        logger.info(f"Admin {update.effective_user.id} deleted bid {bid_id}")
+    else:
+        await update.message.reply_text(f"❌ Не удалось удалить ставку с ID {bid_id}.")
 
 
 async def notify_outbid_users(lot_id: int, previous_max_bid: Optional[Dict], new_max_bid_amount: float, new_bidder_id: int, context: ContextTypes.DEFAULT_TYPE):
@@ -375,11 +413,12 @@ async def set_individual_bid(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Проверяем, ожидается ли ввод ID ставки для удаления
     if 'awaiting_bid_id' in context.user_data and context.user_data['awaiting_bid_id']:
         bid_id_str = update.message.text.strip()
         try:
             bid_id = int(bid_id_str)
-            await update.message.reply_text(f"Функция удаления ставок в данной версии не реализована. ID: {bid_id}")
+            await perform_bid_deletion(update, bid_id)
         except ValueError:
             await update.message.reply_text("Пожалуйста, введите корректное число для ID ставки.")
         context.user_data['awaiting_bid_id'] = False
@@ -542,7 +581,8 @@ async def main() -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("auction", auction_info))
     app.add_handler(CommandHandler("info", info))
-    app.add_handler(CommandHandler("delete", delete_bid))
+    app.add_handler(CommandHandler("delete", delete_bid_command))
+    app.add_handler(CommandHandler("list_lots", list_lots))
 
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать лоты$'), handle_show_lots_button))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать свои ставки$'), show_user_bids))
