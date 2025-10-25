@@ -133,7 +133,7 @@ auction_lots = {
         'Автор - Пугало',
         'min_bid_step': 50.0,
         'starting_price': 100.0,
-        'image_url': 'https://disk.yandex.ru/i/aGgZQ41bYicERg'
+        'image_url': 'https://disk.yandex.ru/i/pKjp5OOY-j5Jmw'
     }
 }
 
