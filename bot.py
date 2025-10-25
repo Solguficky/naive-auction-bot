@@ -81,7 +81,7 @@ auction_lots = {
     },
     6: {
         'title': 'Картина по номерам с подвохом',
-        'description': 'Неклассический набор для росписи картины. В набор входит холст с разметкой, инструменты, краски и инструкция\n'
+        'description': 'Неклассический набор для росписи картины. В набор входит холст 40х50 с разметкой, инструменты, краски и инструкция\n'
         'Автор - Петя',
         'min_bid_step': 100.0,
         'starting_price': 1000.0,
@@ -343,8 +343,16 @@ async def start_bid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     lot_id = int(query.data.split('_')[2])
     starting_price = auction_lots[lot_id]['starting_price']
-
-    bid_id = await database.save_bid(lot_id, query.from_user.id, starting_price)
+    
+    user = query.from_user
+    bid_id = await database.save_bid(
+        lot_id, 
+        user.id, 
+        starting_price,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name
+    )
 
     await query.edit_message_text(
         text=f"✅ Торги начались для '{auction_lots[lot_id]['title']}'. Спасибо!\n"
@@ -363,8 +371,16 @@ async def bid_increase(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     current_bid = previous_max_bid['amount'] if previous_max_bid else lot['starting_price']
 
     new_bid = current_bid + lot['min_bid_step']
-
-    bid_id = await database.save_bid(lot_id, query.from_user.id, new_bid)
+    
+    user = query.from_user
+    bid_id = await database.save_bid(
+        lot_id, 
+        user.id, 
+        new_bid,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name
+    )
 
     await notify_outbid_users(lot_id, previous_max_bid, new_bid, query.from_user.id, context)
 
@@ -389,6 +405,138 @@ async def list_lots(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Доступные лоты:\n" + "\n".join(message_lines))
     else:
         await update.message.reply_text("На данный момент лотов нет.")
+
+async def view_all_bids(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает все ставки по всем лотам (для админа)"""
+    user = update.effective_user
+
+    if user.id != CREATOR_ID:
+        await update.message.reply_text("У вас нет доступа к этой команде.")
+        return
+
+    bids_by_lots = await database.get_all_bids_by_lots()
+    
+    if not bids_by_lots:
+        await update.message.reply_text("Пока нет ни одной ставки.")
+        return
+
+    for lot_id in sorted(bids_by_lots.keys()):
+        lot_title = auction_lots.get(lot_id, {}).get('title', 'Неизвестный лот')
+        bids = bids_by_lots[lot_id]
+        
+        message_lines = [f"📦 <b>Лот {lot_id}: {lot_title}</b>", f"Всего ставок: {len(bids)}\n"]
+        
+        for bid in bids[:10]:  # Показываем только топ-10 ставок
+            username = bid.get('username') or 'Нет username'
+            first_name = bid.get('first_name') or ''
+            display_name = f"@{username}" if username != 'Нет username' else first_name or f"ID{bid['user_id']}"
+            
+            message_lines.append(
+                f"• ID ставки: {bid['id']} | {display_name}\n"
+                f"  Сумма: {bid['amount']} руб. | {bid['created_at']}"
+            )
+        
+        if len(bids) > 10:
+            message_lines.append(f"\n... и еще {len(bids) - 10} ставок")
+        
+        await update.message.reply_text("\n".join(message_lines), parse_mode="HTML")
+
+async def view_lot_bids(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает все ставки по конкретному лоту (для админа)"""
+    user = update.effective_user
+
+    if user.id != CREATOR_ID:
+        await update.message.reply_text("У вас нет доступа к этой команде.")
+        return
+
+    if len(context.args) != 1:
+        await update.message.reply_text("Пожалуйста, укажите ID лота.\nФормат: /view_lot [ID]")
+        return
+
+    try:
+        lot_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Пожалуйста, укажите корректный числовой ID лота.")
+        return
+
+    if lot_id not in auction_lots:
+        await update.message.reply_text(f"Лот с ID {lot_id} не найден.")
+        return
+
+    lot_title = auction_lots[lot_id]['title']
+    bids = await database.get_lot_bids(lot_id)
+    
+    if not bids:
+        await update.message.reply_text(f"По лоту '{lot_title}' пока нет ставок.")
+        return
+
+    max_bid = max(bid['amount'] for bid in bids)
+    
+    message_lines = [
+        f"📦 <b>Лот {lot_id}: {lot_title}</b>",
+        f"Всего ставок: {len(bids)}",
+        f"Максимальная ставка: {max_bid} руб.\n"
+    ]
+    
+    # Сортируем по сумме (убывание)
+    sorted_bids = sorted(bids, key=lambda x: x['amount'], reverse=True)
+    
+    for bid in sorted_bids:
+        username = bid.get('username') or 'Нет username'
+        first_name = bid.get('first_name') or ''
+        display_name = f"@{username}" if username != 'Нет username' else first_name or f"ID{bid['user_id']}"
+        
+        message_lines.append(
+            f"• ID ставки: {bid['id']} | {display_name}\n"
+            f"  Сумма: {bid['amount']} руб. | {bid['created_at']}"
+        )
+    
+    # Telegram ограничивает сообщения 4096 символами, разбиваем если нужно
+    current_message = "\n".join(message_lines)
+    if len(current_message) > 4000:
+        # Отправляем по частям
+        chunks = [message_lines[0:3]]  # Заголовок
+        chunk = []
+        for line in message_lines[3:]:
+            chunk.append(line)
+            if len("\n".join(chunk)) > 3500:
+                chunks.append(chunk)
+                chunk = []
+        if chunk:
+            chunks.append(chunk)
+        
+        for i, chunk in enumerate(chunks):
+            await update.message.reply_text("\n".join(chunk), parse_mode="HTML")
+    else:
+        await update.message.reply_text(current_message, parse_mode="HTML")
+
+async def bids_summary(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает краткую сводку по всем лотам (для админа)"""
+    user = update.effective_user
+
+    if user.id != CREATOR_ID:
+        await update.message.reply_text("У вас нет доступа к этой команде.")
+        return
+
+    summary = await database.get_bids_summary()
+    
+    if not summary:
+        await update.message.reply_text("Пока нет ни одной ставки.")
+        return
+
+    message_lines = ["📊 <b>Сводка по ставкам</b>\n"]
+    
+    for item in summary:
+        lot_id = item['lot_id']
+        lot_title = auction_lots.get(lot_id, {}).get('title', 'Неизвестный лот')
+        
+        message_lines.append(
+            f"<b>Лот {lot_id}</b>: {lot_title}\n"
+            f"  Ставок: {item['bid_count']}\n"
+            f"  Макс: {item['max_bid']} руб. | Мин: {item['min_bid']} руб.\n"
+        )
+    
+    await update.message.reply_text("\n".join(message_lines), parse_mode="HTML")
 
 async def set_individual_bid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -449,7 +597,14 @@ async def process_text_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return
 
-        bid_id = await database.save_bid(lot_id, user.id, bid_amount)
+        bid_id = await database.save_bid(
+            lot_id, 
+            user.id, 
+            bid_amount,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name
+        )
 
         if current_bid is None or bid_amount > current_bid:
             await notify_outbid_users(lot_id, previous_max_bid, bid_amount, user.id, context)
@@ -531,7 +686,7 @@ async def auction_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Добро пожаловать на солевой аукцион. Все операции на аукционе осуществляются через данного бота:\n\n"
         "Информация о том, как работать с ботом:\n\n"
         "Через кнопки можно вызвать список лотов (Показать лоты) или посмотреть на какие лоты вы уже сделали ставки (Показать свои ставки), чтобы посмотреть держите ли вы максимальную ставку по своему лоту. В списке лотов при выборе конкретного лота вы можете: посмотреть его описание, и сделать ставку (если вы первый, то она = стартовой цене; при наличии других ставок вы можете либо повысить ставку на минимальный шаг, либо сделать индивидуальную ставку -  указать любую другую сумму ставки, превышающую минимальный шаг)\n\n"
-        "Аукцион продлится с 18:10 6/04 по 20:00 12/04 (время по СПБ). Все ставки принимаются в рублях. Выигравшей считается последняя принятая ставка (последний час торгов проходит в гибридном формате оффлайн/онлайн аукциона) \n\n"
+        "Аукцион продлится с 25.10.2025 по 01.11.2025 (время по СПБ). Все ставки принимаются в рублях. Выигравшей считается последняя принятая ставка (последний час торгов проходит в гибридном формате оффлайн/онлайн аукциона).\n\n"
         "Победителям аукциона лоты выдаются/высылаются по договоренности, в удобный обеим сторонам день\n\n"
         "Если у вас есть вопросы, вы можете обратиться с ними в чат к Nato \n"
         "P.S. Если вы думаете что очень умны и нашли какую-то уязвимость в боте - скорее всего так и есть, скорее всего она уже сотню раз оплакана в попытках исправить и не была исправлена. Живите с этим, я же как-то живу...",
@@ -583,6 +738,9 @@ async def main() -> None:
     app.add_handler(CommandHandler("info", info))
     app.add_handler(CommandHandler("delete", delete_bid_command))
     app.add_handler(CommandHandler("list_lots", list_lots))
+    app.add_handler(CommandHandler("view_all_bids", view_all_bids))
+    app.add_handler(CommandHandler("view_lot", view_lot_bids))
+    app.add_handler(CommandHandler("summary", bids_summary))
 
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать лоты$'), handle_show_lots_button))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex('^Показать свои ставки$'), show_user_bids))

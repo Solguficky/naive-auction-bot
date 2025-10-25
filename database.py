@@ -24,19 +24,22 @@ async def init_db():
                 id SERIAL PRIMARY KEY,
                 lot_id INTEGER NOT NULL,
                 user_id BIGINT NOT NULL,
+                username VARCHAR(255),
+                first_name VARCHAR(255),
+                last_name VARCHAR(255),
                 amount DECIMAL(10, 2) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
     logger.info("Database initialized successfully")
 
-async def save_bid(lot_id: int, user_id: int, amount: float) -> int:
+async def save_bid(lot_id: int, user_id: int, amount: float, username: str = None, first_name: str = None, last_name: str = None) -> int:
     async with pool.acquire() as conn:
         bid_id = await conn.fetchval(
-            "INSERT INTO bids (lot_id, user_id, amount) VALUES ($1, $2, $3) RETURNING id",
-            lot_id, user_id, amount
+            "INSERT INTO bids (lot_id, user_id, username, first_name, last_name, amount) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            lot_id, user_id, username, first_name, last_name, amount
         )
-        logger.info(f"Saved bid {bid_id}: lot={lot_id}, user={user_id}, amount={amount}")
+        logger.info(f"Saved bid {bid_id}: lot={lot_id}, user={user_id} (@{username}), amount={amount}")
         return bid_id
 
 async def get_lot_bids(lot_id: int) -> List[Dict]:
@@ -113,6 +116,41 @@ async def delete_bid(bid_id: int) -> bool:
         else:
             logger.warning(f"Bid {bid_id} not found for deletion")
             return False
+
+async def get_all_bids_by_lots() -> Dict[int, List[Dict]]:
+    """Возвращает все ставки, сгруппированные по лотам"""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM bids ORDER BY lot_id, amount DESC")
+        result = {}
+        for row in rows:
+            bid = dict(row)
+            bid['amount'] = float(bid['amount'])
+            lot_id = bid['lot_id']
+            if lot_id not in result:
+                result[lot_id] = []
+            result[lot_id].append(bid)
+        return result
+
+async def get_bids_summary() -> List[Dict]:
+    """Возвращает сводку по ставкам: лот, количество ставок, максимальная ставка"""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT 
+                lot_id,
+                COUNT(*) as bid_count,
+                MAX(amount) as max_bid,
+                MIN(amount) as min_bid
+            FROM bids 
+            GROUP BY lot_id 
+            ORDER BY lot_id
+        """)
+        result = []
+        for row in rows:
+            summary = dict(row)
+            summary['max_bid'] = float(summary['max_bid'])
+            summary['min_bid'] = float(summary['min_bid'])
+            result.append(summary)
+        return result
 
 async def close_pool():
     global pool
