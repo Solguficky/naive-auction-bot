@@ -135,6 +135,24 @@ auction_lots = {
         'min_bid_step': 50.0,
         'starting_price': 100.0,
         'image_url': 'https://disk.yandex.ru/i/pKjp5OOY-j5Jmw'
+    },
+    12: {
+        'title': 'Набор из 2 значков "Ведьмочка"',
+        'description': 'Шляпа ведьмочки + котелок с зельем! \n'
+        'Что за зелье - на ваше усмотрение!\n'
+        'Автор - Нян',
+        'min_bid_step': 9.0,
+        'starting_price': 42.0,
+        'image_url': 'https://disk.yandex.ru/i/AvG9WggeTv0dBw'
+    },
+    13: {
+        'title': 'Один значок "Крышечка нюка колы"',
+        'description': 'Абсолютно точно настоящая. \n'
+        'Пригодится при ядерной войне. Там и стример запустит с вебкой..\n'
+        'Автор - Нян',
+        'min_bid_step': 8.0,
+        'starting_price': 21.0,
+        'image_url': 'https://disk.yandex.ru/i/r0dW3JfCAajvcQ'
     }
 }
 
